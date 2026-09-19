@@ -2,6 +2,8 @@ import { OnlineRoomState, Player, CoupleLevel, PlayEnvironment, Prompt } from '.
 
 type RoomUpdateListener = (room: OnlineRoomState) => void;
 type ReactionListener = (emoji: string, senderName: string) => void;
+type SignalListener = (signal: any, senderId: string) => void;
+type CamStatusListener = (isCameraOn: boolean, senderId: string) => void;
 
 class OnlineSyncService {
   private ws: WebSocket | null = null;
@@ -9,6 +11,8 @@ class OnlineSyncService {
   private playerId: string = '';
   private roomUpdateListeners: Set<RoomUpdateListener> = new Set();
   private reactionListeners: Set<ReactionListener> = new Set();
+  private signalListeners: Set<SignalListener> = new Set();
+  private camStatusListeners: Set<CamStatusListener> = new Set();
   private reconnectTimer: any = null;
   private currentRoomState: OnlineRoomState | null = null;
 
@@ -35,6 +39,28 @@ class OnlineSyncService {
   public onReaction(listener: ReactionListener) {
     this.reactionListeners.add(listener);
     return () => this.reactionListeners.delete(listener);
+  }
+
+  public onSignal(listener: SignalListener) {
+    this.signalListeners.add(listener);
+    return () => this.signalListeners.delete(listener);
+  }
+
+  public onCamStatus(listener: CamStatusListener) {
+    this.camStatusListeners.add(listener);
+    return () => this.camStatusListeners.delete(listener);
+  }
+
+  private notifySignal(signal: any, senderId: string) {
+    for (const listener of this.signalListeners) {
+      listener(signal, senderId);
+    }
+  }
+
+  private notifyCamStatus(isCameraOn: boolean, senderId: string) {
+    for (const listener of this.camStatusListeners) {
+      listener(isCameraOn, senderId);
+    }
   }
 
   private notifyRoomUpdate(room: OnlineRoomState) {
@@ -139,6 +165,10 @@ class OnlineSyncService {
             }
           } else if (msg.type === 'REACTION') {
             this.notifyReaction(msg.emoji, msg.senderName);
+          } else if (msg.type === 'WEBRTC_SIGNAL') {
+            this.notifySignal(msg.signal, msg.senderId);
+          } else if (msg.type === 'CAM_STATUS') {
+            this.notifyCamStatus(msg.isCameraOn, msg.senderId);
           }
         } catch (err) {
           console.error('Failed to parse WS msg:', err);
@@ -284,6 +314,24 @@ class OnlineSyncService {
       roomCode: this.roomCode,
       emoji,
       senderName,
+    });
+  }
+
+  public sendSignal(signal: any) {
+    this.sendWsMessage({
+      type: 'WEBRTC_SIGNAL',
+      roomCode: this.roomCode,
+      senderId: this.playerId,
+      signal,
+    });
+  }
+
+  public sendCamStatus(isCameraOn: boolean) {
+    this.sendWsMessage({
+      type: 'CAM_STATUS',
+      roomCode: this.roomCode,
+      senderId: this.playerId,
+      isCameraOn,
     });
   }
 

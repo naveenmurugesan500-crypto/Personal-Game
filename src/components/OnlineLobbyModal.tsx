@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Player, CoupleLevel, PlayEnvironment, OnlineRoomState } from '../types';
 import { onlineSync } from '../utils/onlineSync';
 import { soundEngine } from '../utils/audio';
+import { webrtcManager } from '../utils/webrtc';
 import {
   Wifi,
   Copy,
@@ -27,6 +28,7 @@ interface OnlineLobbyModalProps {
   activeLevel: CoupleLevel;
   activeEnvironment: PlayEnvironment;
   onChangeSettings: (level: CoupleLevel, env: PlayEnvironment) => void;
+  onSetMyRole?: (role: 'male' | 'female') => void;
 }
 
 export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
@@ -37,6 +39,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   activeLevel,
   activeEnvironment,
   onChangeSettings,
+  onSetMyRole,
 }) => {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [hostName, setHostName] = useState<string>(currentPlayers[0]?.name || 'Him');
@@ -101,6 +104,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
       soundEngine.playSuccess();
       soundEngine.vibrateSuccess();
       onChangeSettings(selectedLevel, selectedEnv);
+      if (onSetMyRole) onSetMyRole(hostGender);
+      webrtcManager.initCall(true);
     }
   };
 
@@ -124,6 +129,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     } else {
       soundEngine.playSuccess();
       soundEngine.vibrateSuccess();
+      if (onSetMyRole) onSetMyRole(guestGender);
+      webrtcManager.initCall(false);
       if (res.player) {
         // joined successfully
       }

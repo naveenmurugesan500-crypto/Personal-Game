@@ -1,6 +1,6 @@
 {
   "name": "Truth or Dare: 18+ Adult Edition",
   "description": "Exclusive adult Truth or Dare couples game with age verification, partner gender selection, intimate spicy modes, and chemistry tracker.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

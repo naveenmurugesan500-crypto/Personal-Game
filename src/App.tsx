@@ -29,6 +29,8 @@ import { AndroidHeader } from './components/AndroidHeader';
 import { AndroidBottomNav } from './components/AndroidBottomNav';
 import { BottleSpinner } from './components/BottleSpinner';
 import { CardDeck } from './components/CardDeck';
+import { IndividualDashboard } from './components/IndividualDashboard';
+import { DualSplitDashboard } from './components/DualSplitDashboard';
 import { DareTimer } from './components/DareTimer';
 import { ForfeitModal } from './components/ForfeitModal';
 import { PlayerSetup } from './components/PlayerSetup';
@@ -139,6 +141,17 @@ export default function App() {
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [showOnlineLobby, setShowOnlineLobby] = useState(false);
   const [showVideoCam, setShowVideoCam] = useState(false);
+  const [showBottleSpinnerModal, setShowBottleSpinnerModal] = useState(false);
+
+  // Individual Player Dashboard Role ('male' for Him, 'female' for Her)
+  const [activeDashboardRole, setActiveDashboardRole] = useState<'male' | 'female'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tod_my_role');
+      if (saved === 'male' || saved === 'female') return saved;
+    }
+    return 'male';
+  });
+  const [isDualView, setIsDualView] = useState(false);
 
   // Online Multiplayer State
   const [onlineRoom, setOnlineRoom] = useState<OnlineRoomState | null>(null);
@@ -148,6 +161,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('tod_players', JSON.stringify(players));
   }, [players]);
+
+  useEffect(() => {
+    localStorage.setItem('tod_my_role', activeDashboardRole);
+  }, [activeDashboardRole]);
 
   useEffect(() => {
     localStorage.setItem('tod_custom_prompts', JSON.stringify(customPrompts));
@@ -206,6 +223,21 @@ export default function App() {
   // Active player safe reference
   const activePlayer = players[activePlayerIndex] || players[0] || DEFAULT_PLAYERS[0];
   const partnerPlayer = players[activePlayerIndex === 0 ? 1 : 0] || players[1] || DEFAULT_PLAYERS[1];
+
+  const himPlayer = players.find((p) => p.gender === 'male') || players[0] || DEFAULT_PLAYERS[0];
+  const herPlayer = players.find((p) => p.gender === 'female') || players[1] || DEFAULT_PLAYERS[1];
+  const dashboardPlayer = activeDashboardRole === 'male' ? himPlayer : herPlayer;
+  const dashboardPartner = activeDashboardRole === 'male' ? herPlayer : himPlayer;
+  const isMyTurn = activePlayer.gender === activeDashboardRole;
+
+  const handleSendReaction = (emoji: string) => {
+    soundEngine.playTap();
+    setFloatingReaction({ emoji, sender: dashboardPlayer.name });
+    setTimeout(() => setFloatingReaction(null), 3000);
+    if (onlineRoom?.roomCode) {
+      onlineSync.sendReaction(emoji, dashboardPlayer.name);
+    }
+  };
 
   // Draw a gender-aware, couple-level-aware prompt
   const drawPrompt = useCallback(
@@ -418,181 +450,16 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-md mx-auto flex flex-col">
-        {/* SCREEN 1: PLAY GAME ARENA */}
+      <main className={`flex-1 w-full mx-auto flex flex-col ${isDualView && currentScreen === 'play' ? 'max-w-5xl' : 'max-w-md sm:max-w-lg'}`}>
+        {/* SCREEN 1: PLAY GAME ARENA - INDIVIDUAL DASHBOARDS */}
         {currentScreen === 'play' && (
-          <div className="flex-1 flex flex-col items-center justify-between p-3">
-            {/* Quick Couple Level & Mode Switcher Bar */}
-            <div className="w-full flex items-center justify-between gap-2 px-1 py-1.5 mb-2">
-              {/* Level Selector Pills */}
-              <div className="flex items-center gap-1 p-1 bg-zinc-900/90 rounded-2xl border border-zinc-800">
-                {(['soft', 'medium', 'extreme'] as CoupleLevel[]).map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playTap();
-                      setCoupleLevel(lvl);
-                      if (onlineRoom?.roomCode) {
-                        onlineSync.changeSettings(lvl, playEnvironment);
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-black capitalize transition ${
-                      coupleLevel === lvl
-                        ? lvl === 'soft'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : lvl === 'medium'
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'bg-rose-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {lvl}
-                  </button>
-                ))}
-              </div>
-
-              {/* Video Call vs Direct Play Switcher */}
-              <div className="flex items-center gap-1 p-1 bg-zinc-900/90 rounded-2xl border border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playTap();
-                    setPlayEnvironment('direct_play');
-                    if (onlineRoom?.roomCode) {
-                      onlineSync.changeSettings(coupleLevel, 'direct_play');
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition ${
-                    playEnvironment === 'direct_play'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                  title="Direct In-Person Play"
-                >
-                  <Flame className="w-3.5 h-3.5 fill-current" />
-                  <span className="hidden sm:inline">Direct</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playTap();
-                    setPlayEnvironment('video_call');
-                    setShowVideoCam(true);
-                    if (onlineRoom?.roomCode) {
-                      onlineSync.changeSettings(coupleLevel, 'video_call');
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition ${
-                    playEnvironment === 'video_call'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                  title="Video Call Mode"
-                >
-                  <Video className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Video</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Play Style Segmented Switcher (Bottle vs Turn) */}
-            <div className="flex items-center gap-1 p-1 bg-zinc-900/80 rounded-full border border-zinc-800 shadow-sm my-1">
-              <button
-                id="play-style-turn-btn"
-                onClick={() => {
-                  soundEngine.playTap();
-                  setPlayStyle('turn');
-                }}
-                className={`flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold transition ${
-                  playStyle === 'turn'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Dices className="w-3.5 h-3.5" />
-                <span>Turn-by-Turn</span>
-              </button>
-
-              <button
-                id="play-style-bottle-btn"
-                onClick={() => {
-                  soundEngine.playTap();
-                  setPlayStyle('bottle');
-                }}
-                className={`flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold transition ${
-                  playStyle === 'bottle'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <RotateCw className="w-3.5 h-3.5" />
-                <span>Spin Bottle</span>
-              </button>
-            </div>
-
-            {/* If In Bottle Spin Mode: Show 3D Bottle Spinner */}
-            {playStyle === 'bottle' && !selectedType && (
-              <div className="w-full flex-1 flex flex-col items-center justify-center my-2">
-                <BottleSpinner
-                  players={players}
-                  activePlayerIndex={activePlayerIndex}
-                  onPlayerSelected={(idx) => {
-                    setActivePlayerIndex(idx);
-                  }}
-                  isSpinning={isSpinning}
-                  setIsSpinning={setIsSpinning}
-                />
-              </div>
-            )}
-
-            {/* If In Turn Mode and Card Not Yet Chosen: Show Next Turn Card Banner */}
-            {playStyle === 'turn' && !selectedType && (
-              <div className="w-full flex-1 flex flex-col items-center justify-center text-center px-4 my-3">
-                <div className="relative mb-3">
-                  <div
-                    className="w-20 h-20 rounded-full p-1 shadow-2xl shadow-rose-900/40 ring-4 ring-rose-500/40 mx-auto flex items-center justify-center"
-                    style={{ backgroundColor: `${activePlayer.avatarColor}25` }}
-                  >
-                    <div
-                      className="w-full h-full rounded-full flex items-center justify-center text-white text-xl font-black uppercase shadow-inner"
-                      style={{ backgroundColor: activePlayer.avatarColor }}
-                    >
-                      {activePlayer.name.substring(0, 2)}
-                    </div>
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase shadow">
-                    {activePlayer.gender === 'male' ? '♂ Him' : '♀ Her'}
-                  </div>
-                </div>
-
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-400">
-                  Ready for intimacy challenge
-                </span>
-                <h2 className="text-xl font-black text-white tracking-tight mt-1 mb-1">
-                  {activePlayer.name}
-                </h2>
-                <p className="text-xs text-zinc-400 max-w-xs mb-3">
-                  Pick Truth for spicy secrets or Dare for romantic and physical challenges!
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleNextPlayer}
-                    className="px-3.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <span>Pass Turn</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* TRUTH OR DARE CARD DECK */}
-            <div className="w-full">
-              <CardDeck
-                activePlayer={activePlayer}
+          <div className="flex-1 flex flex-col items-center justify-between p-2 sm:p-3">
+            {isDualView ? (
+              /* DUAL-SPLIT VIEW: BOTH SCREENS SIDE-BY-SIDE */
+              <DualSplitDashboard
+                player1={himPlayer}
+                player2={herPlayer}
+                activeTurnGender={(activePlayer.gender as 'male' | 'female') || 'male'}
                 currentPrompt={currentPrompt}
                 selectedType={selectedType}
                 onSelectType={handleSelectType}
@@ -601,11 +468,64 @@ export default function App() {
                 onRerollPrompt={handleRerollPrompt}
                 onOpenTimer={() => setShowTimer(true)}
                 activeLevel={coupleLevel}
+                onChangeLevel={(lvl) => {
+                  setCoupleLevel(lvl);
+                  if (onlineRoom?.roomCode) {
+                    onlineSync.changeSettings(lvl, playEnvironment);
+                  }
+                }}
                 activeEnvironment={playEnvironment}
-                onToggleCam={() => setShowVideoCam((prev) => !prev)}
-                isCamActive={showVideoCam}
+                onChangeEnvironment={(env) => {
+                  setPlayEnvironment(env);
+                  if (onlineRoom?.roomCode) {
+                    onlineSync.changeSettings(coupleLevel, env);
+                  }
+                }}
+                onPassTurn={handleNextPlayer}
+                onSpinBottle={() => setShowBottleSpinnerModal(true)}
+                onSendReaction={handleSendReaction}
+                onCloseDualView={() => setIsDualView(false)}
+                isOnlineActive={!!onlineRoom?.roomCode}
+                onlineRoomCode={onlineRoom?.roomCode}
               />
-            </div>
+            ) : (
+              /* INDIVIDUAL PLAYER DASHBOARD (Default view per player) */
+              <IndividualDashboard
+                myPlayer={dashboardPlayer}
+                partnerPlayer={dashboardPartner}
+                isMyTurn={isMyTurn}
+                activeRole={activeDashboardRole}
+                onChangeActiveRole={(role) => setActiveDashboardRole(role)}
+                onToggleDualView={() => setIsDualView(true)}
+                isDualView={false}
+                currentPrompt={currentPrompt}
+                selectedType={selectedType}
+                onSelectType={handleSelectType}
+                onCompletePrompt={handleCompletePrompt}
+                onForfeitPrompt={handleForfeitPrompt}
+                onRerollPrompt={handleRerollPrompt}
+                onOpenTimer={() => setShowTimer(true)}
+                activeLevel={coupleLevel}
+                onChangeLevel={(lvl) => {
+                  setCoupleLevel(lvl);
+                  if (onlineRoom?.roomCode) {
+                    onlineSync.changeSettings(lvl, playEnvironment);
+                  }
+                }}
+                activeEnvironment={playEnvironment}
+                onChangeEnvironment={(env) => {
+                  setPlayEnvironment(env);
+                  if (onlineRoom?.roomCode) {
+                    onlineSync.changeSettings(coupleLevel, env);
+                  }
+                }}
+                onPassTurn={handleNextPlayer}
+                onSpinBottle={() => setShowBottleSpinnerModal(true)}
+                onSendReaction={handleSendReaction}
+                isOnlineActive={!!onlineRoom?.roomCode}
+                onlineRoomCode={onlineRoom?.roomCode}
+              />
+            )}
           </div>
         )}
 
@@ -757,7 +677,40 @@ export default function App() {
           setCoupleLevel(lvl);
           setPlayEnvironment(env);
         }}
+        onSetMyRole={(role) => setActiveDashboardRole(role)}
       />
+
+      {/* Bottle Spinner Modal when triggered from Dashboard */}
+      {showBottleSpinnerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-5 shadow-2xl flex flex-col items-center">
+            <div className="w-full flex items-center justify-between mb-4">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <RotateCw className="w-4 h-4 text-rose-500" />
+                <span>Spin the Intimacy Bottle</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowBottleSpinnerModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <BottleSpinner
+              players={players}
+              activePlayerIndex={activePlayerIndex}
+              onPlayerSelected={(idx) => {
+                setActivePlayerIndex(idx);
+                setTimeout(() => setShowBottleSpinnerModal(false), 900);
+              }}
+              isSpinning={isSpinning}
+              setIsSpinning={setIsSpinning}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Video Call Cam Viewfinder Modal */}
       <VideoCallCamModal

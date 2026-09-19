@@ -470,6 +470,30 @@ async function startServer() {
             emoji: msg.emoji,
             senderName: msg.senderName,
           });
+        } else if (msg.type === 'WEBRTC_SIGNAL') {
+          // Relay WebRTC signaling (offer, answer, candidate) to the other client in this room
+          const relayMsg = JSON.stringify({
+            type: 'WEBRTC_SIGNAL',
+            signal: msg.signal,
+            senderId: msg.senderId,
+          });
+          for (const client of room.clients) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(relayMsg);
+            }
+          }
+        } else if (msg.type === 'CAM_STATUS') {
+          // Relay camera active status to other client
+          const relayMsg = JSON.stringify({
+            type: 'CAM_STATUS',
+            isCameraOn: msg.isCameraOn,
+            senderId: msg.senderId,
+          });
+          for (const client of room.clients) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(relayMsg);
+            }
+          }
         }
       } catch (err) {
         console.error('WebSocket message error:', err);
